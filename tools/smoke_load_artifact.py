@@ -47,12 +47,11 @@ def main(argv: list[str]) -> int:
         print("run tools/ci_prepare_windows.py first so the R73 wheel is installed into this Python", file=sys.stderr)
         return 1
 
-    core = vs.core
     try:
         env = vs.create_environment(flags=vs.DISABLE_AUTO_LOADING)
         core = env.get_core()
     except AttributeError:
-        pass
+        core = vs.core
 
     core.std.LoadPlugin(str(plugin))
     if not hasattr(core, "nnedi3cl") or not hasattr(core.nnedi3cl, "NNEDI3CL"):
