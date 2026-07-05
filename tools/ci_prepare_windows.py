@@ -4,6 +4,7 @@ import argparse
 import shutil
 import subprocess
 import sys
+import sysconfig
 import tarfile
 import urllib.request
 import zipfile
@@ -145,6 +146,13 @@ def install_vapoursynth_wheel(vs_root: Path) -> None:
             "vapoursynth==73",
         ]
     )
+    site_packages = Path(sysconfig.get_paths()["platlib"]).resolve()
+    shutil.copy2(vs_root / "portable.vs", site_packages / "portable.vs")
+    coreplugins_src = vs_root / "vs-coreplugins"
+    coreplugins_dst = site_packages / "vs-coreplugins"
+    if coreplugins_dst.exists():
+        shutil.rmtree(coreplugins_dst)
+    shutil.copytree(coreplugins_src, coreplugins_dst)
 
 
 def prepare_boost(deps: Path) -> Path:
