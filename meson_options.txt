@@ -1,0 +1,6 @@
+option('vapoursynth_incdir', type : 'string', value : '', description : 'Directory containing VapourSynth4.h and VSHelper4.h. If empty, Meson uses dependency("vapoursynth").')
+option('vapoursynth_plugindir', type : 'string', value : '', description : 'Plugin install directory. If empty, Meson uses the VapourSynth pkg-config libdir when available, otherwise prefix/libdir/vapoursynth.')
+option('boost_root', type : 'string', value : '', description : 'Boost source/install root containing boost/compute/core.hpp. Only Boost headers are required.')
+option('offline_cache', type : 'boolean', value : false, description : 'Enable Boost.Compute offline kernel cache. This requires Boost filesystem/system libraries.')
+option('opencl_incdir', type : 'string', value : '', description : 'Directory containing CL/opencl.h. If empty, Meson tries dependency("OpenCL").')
+option('opencl_libdir', type : 'string', value : '', description : 'Directory containing OpenCL.lib, libOpenCL.so, or libOpenCL.dylib.')

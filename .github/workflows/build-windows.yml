@@ -1,0 +1,50 @@
+name: Build Windows
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Windows x64
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade meson ninja
+
+      - name: Prepare dependencies
+        run: python tools/ci_prepare_windows.py
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build plugin
+        run: python tools/ci_build_windows.py --clean
+
+      - name: Smoke-load artifact
+        run: >-
+          python tools/smoke_load_artifact.py
+          --vapoursynth-root _deps/vapoursynth-portable-R73
+          --artifact-dir dist/windows-x64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nnedi3cl-windows-x64
+          path: |
+            dist/windows-x64/nnedi3cl.dll
+            dist/windows-x64/nnedi3_weights.bin

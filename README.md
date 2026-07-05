@@ -63,9 +63,110 @@ The file `nnedi3_weights.bin` is required. On Windows, it must be located in the
 Compilation
 ===========
 
-Requires `Boost`.
+The easiest reproducible Windows build is the GitHub Actions workflow in
+`.github/workflows/build-windows.yml`. It downloads the exact SDK/dependencies,
+builds `nnedi3cl.dll`, smoke-loads the result with VapourSynth, and uploads an
+artifact containing:
 
 ```
-meson build
+nnedi3cl.dll
+nnedi3_weights.bin
+```
+
+Download the artifact and put both files in the same plugin directory. On
+Windows the weights file must sit next to the DLL.
+
+
+Windows CI Pipeline
+-------------------
+
+The workflow performs these steps:
+
+1. Install Python build tools: `meson` and `ninja`.
+2. Download `VapourSynth64-Portable-R73.zip` from the official VapourSynth
+   release and use its API4 SDK headers/import library.
+3. Download Boost 1.71.0. The default build only needs Boost headers. Boost
+   filesystem/system libraries are only needed if `-Doffline_cache=true` is
+   enabled.
+4. Download Khronos OpenCL headers and build the Khronos OpenCL ICD loader to
+   obtain `OpenCL.lib`.
+5. Enter an x64 MSVC developer environment.
+6. Configure Meson with explicit dependency paths.
+7. Build `nnedi3cl.dll`.
+8. Copy `nnedi3_weights.bin` next to the DLL and smoke-load the plugin with
+   VapourSynth.
+
+This intentionally avoids requiring a full CUDA installation just to compile.
+A real OpenCL runtime/driver is still required when actually running the
+filter.
+
+
+Local Windows Build
+-------------------
+
+Required tools:
+
+- Visual Studio Build Tools or Visual Studio with the x64 C++ toolchain.
+- Python 3.10+.
+- Git.
+- CMake.
+
+From an x64 Developer Command Prompt:
+
+```bat
+python -m pip install --upgrade meson ninja
+python tools\ci_prepare_windows.py
+python tools\ci_build_windows.py --clean
+python tools\smoke_load_artifact.py --vapoursynth-root _deps\vapoursynth-portable-R73 --artifact-dir dist\windows-x64
+```
+
+Output:
+
+```text
+dist/windows-x64/nnedi3cl.dll
+dist/windows-x64/nnedi3_weights.bin
+```
+
+If you already have dependencies installed, Meson can be invoked directly:
+
+```bat
+meson setup build --buildtype release ^
+  -Dvapoursynth_incdir=C:/path/to/vapoursynth/sdk/include/vapoursynth ^
+  -Dboost_root=C:/path/to/boost_1_71_0 ^
+  -Dopencl_incdir=C:/path/to/opencl-headers ^
+  -Dopencl_libdir=C:/path/to/opencl/lib ^
+  -Dvapoursynth_plugindir=C:/path/to/output
 ninja -C build
 ```
+
+The important dependency paths are:
+
+- `vapoursynth_incdir`: directory containing `VapourSynth4.h` and
+  `VSHelper4.h`.
+- `boost_root`: directory containing `boost/compute/core.hpp`.
+- `opencl_incdir`: directory containing `CL/opencl.h`.
+- `opencl_libdir`: directory containing `OpenCL.lib`.
+- `offline_cache`: optional Boost.Compute offline kernel cache. The default is
+  `false` to avoid requiring compiled Boost libraries.
+
+
+Linux/macOS Build
+-----------------
+
+The original Meson flow is still supported when the dependencies are discoverable
+through normal system mechanisms:
+
+```bash
+meson setup build --buildtype release
+ninja -C build
+```
+
+You need:
+
+- VapourSynth API4 development headers and library/pkg-config metadata.
+- Boost headers, plus Boost filesystem/system libraries only if
+  `-Doffline_cache=true`.
+- OpenCL headers and loader library.
+
+If pkg-config cannot find VapourSynth, use the explicit Meson options shown in
+the Windows section.

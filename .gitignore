@@ -4,8 +4,13 @@
 # Local build and verification outputs
 build*/
 verification*/
+dist*/
+_deps/
 meson-logs/
 meson-private/
+native-*.ini
+__pycache__/
+*.py[cod]
 
 # Compiled Object files
 *.slo

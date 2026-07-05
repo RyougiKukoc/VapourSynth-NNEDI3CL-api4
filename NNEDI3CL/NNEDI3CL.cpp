@@ -44,7 +44,9 @@
 #define BOOST_COMPUTE_DEBUG_KERNEL_COMPILATION
 #define BOOST_COMPUTE_HAVE_THREAD_LOCAL
 #define BOOST_COMPUTE_THREAD_SAFE
+#ifdef NNEDI3CL_ENABLE_OFFLINE_CACHE
 #define BOOST_COMPUTE_USE_OFFLINE_CACHE
+#endif
 #include <boost/compute/core.hpp>
 #include <boost/compute/utility/dim.hpp>
 namespace compute = boost::compute;
