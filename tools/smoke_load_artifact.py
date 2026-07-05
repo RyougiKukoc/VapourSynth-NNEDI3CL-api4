@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import site
 import sys
+import sysconfig
 from pathlib import Path
 
 
@@ -16,24 +18,34 @@ def main(argv: list[str]) -> int:
     artifact = Path(args.artifact_dir).resolve()
     plugin = artifact / "nnedi3cl.dll"
     weights = artifact / "nnedi3_weights.bin"
-    vapoursynth_dll = vs_root / "VapourSynth.dll"
-    if not vapoursynth_dll.exists():
-        vapoursynth_dll = vs_root / "Lib" / "site-packages" / "vapoursynth.dll"
+    opencl_runtime = artifact / "OpenCL.dll"
     for p in [
-        vapoursynth_dll,
-        vs_root / "Lib" / "site-packages" / "vapoursynth.pyd",
         plugin,
         weights,
+        opencl_runtime,
     ]:
         if not p.exists():
             print(f"missing required path: {p}", file=sys.stderr)
             return 1
 
-    os.add_dll_directory(str(vs_root))
-    os.add_dll_directory(str(vs_root / "Lib" / "site-packages"))
-    os.add_dll_directory(str(artifact))
+    for path in [
+        artifact,
+        vs_root,
+        vs_root / "Lib" / "site-packages",
+        Path(sys.executable).resolve().parent,
+        Path(sysconfig.get_paths().get("platlib", "")),
+        Path(sysconfig.get_paths().get("purelib", "")),
+        *(Path(p) for p in site.getsitepackages()),
+    ]:
+        if path.exists():
+            os.add_dll_directory(str(path))
 
-    import vapoursynth as vs
+    try:
+        import vapoursynth as vs
+    except ImportError as exc:
+        print(f"failed to import VapourSynth Python module: {exc}", file=sys.stderr)
+        print("run tools/ci_prepare_windows.py first so the R73 wheel is installed into this Python", file=sys.stderr)
+        return 1
 
     core = vs.core
     try:

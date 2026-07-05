@@ -24,13 +24,13 @@ jobs:
       - name: Install build tools
         run: python -m pip install --upgrade meson ninja
 
-      - name: Prepare dependencies
-        run: python tools/ci_prepare_windows.py
-
       - name: Set up MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+
+      - name: Prepare dependencies
+        run: python tools/ci_prepare_windows.py
 
       - name: Build plugin
         run: python tools/ci_build_windows.py --clean
@@ -48,3 +48,4 @@ jobs:
           path: |
             dist/windows-x64/nnedi3cl.dll
             dist/windows-x64/nnedi3_weights.bin
+            dist/windows-x64/OpenCL.dll

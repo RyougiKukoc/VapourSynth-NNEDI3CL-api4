@@ -71,10 +71,13 @@ artifact containing:
 ```
 nnedi3cl.dll
 nnedi3_weights.bin
+OpenCL.dll
 ```
 
-Download the artifact and put both files in the same plugin directory. On
-Windows the weights file must sit next to the DLL.
+Download the artifact and put these files in the same plugin directory. On
+Windows the weights file must sit next to `nnedi3cl.dll`. `OpenCL.dll` is the Khronos
+ICD loader used for linking and loading; a real OpenCL runtime/driver is still
+required when actually running the filter.
 
 
 Windows CI Pipeline
@@ -83,22 +86,22 @@ Windows CI Pipeline
 The workflow performs these steps:
 
 1. Install Python build tools: `meson` and `ninja`.
-2. Download `VapourSynth64-Portable-R73.zip` from the official VapourSynth
+2. Enter an x64 MSVC developer environment.
+3. Download `VapourSynth64-Portable-R73.zip` from the official VapourSynth
    release and use its API4 SDK headers/import library.
-3. Download Boost 1.71.0. The default build only needs Boost headers. Boost
+4. Download Boost 1.71.0. The default build only needs Boost headers. Boost
    filesystem/system libraries are only needed if `-Doffline_cache=true` is
    enabled.
-4. Download Khronos OpenCL headers and build the Khronos OpenCL ICD loader to
-   obtain `OpenCL.lib`.
-5. Enter an x64 MSVC developer environment.
+5. Download Khronos OpenCL headers and build the Khronos OpenCL ICD loader with
+   MSVC to obtain `OpenCL.lib` and `OpenCL.dll`.
 6. Configure Meson with explicit dependency paths.
 7. Build `nnedi3cl.dll`.
-8. Copy `nnedi3_weights.bin` next to the DLL and smoke-load the plugin with
-   VapourSynth.
+8. Copy `nnedi3_weights.bin` and `OpenCL.dll` next to the DLL and smoke-load
+   the plugin with VapourSynth.
 
 This intentionally avoids requiring a full CUDA installation just to compile.
-A real OpenCL runtime/driver is still required when actually running the
-filter.
+The bundled `OpenCL.dll` is only the Khronos ICD loader; a real OpenCL
+runtime/driver is still required when actually running the filter.
 
 
 Local Windows Build
@@ -107,7 +110,7 @@ Local Windows Build
 Required tools:
 
 - Visual Studio Build Tools or Visual Studio with the x64 C++ toolchain.
-- Python 3.10+.
+- Python 3.12+ for the bundled VapourSynth R73 wheel used by the smoke test.
 - Git.
 - CMake.
 
@@ -125,7 +128,13 @@ Output:
 ```text
 dist/windows-x64/nnedi3cl.dll
 dist/windows-x64/nnedi3_weights.bin
+dist/windows-x64/OpenCL.dll
 ```
+
+If `tools\ci_prepare_windows.py` reports that CMake used GCC/MinGW or cannot
+find `OpenCL.lib`, start a fresh x64 Developer Command Prompt and rerun it. The
+plugin is built with MSVC, so the OpenCL import library must be produced by the
+same toolchain family.
 
 If you already have dependencies installed, Meson can be invoked directly:
 

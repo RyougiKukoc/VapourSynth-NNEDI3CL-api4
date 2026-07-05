@@ -17,15 +17,15 @@ DEFAULT_DIST = ROOT / "dist" / "windows-x64"
 def find_tool(name: str, explicit: str | None = None) -> str | None:
     if explicit:
         return str(Path(explicit).resolve())
-    found = shutil.which(name)
-    if found:
-        return found
     script = Path(sys.executable).resolve().parent / "Scripts" / name
     if script.exists():
         return str(script)
     exe = Path(sys.executable).resolve().parent / "Scripts" / f"{name}.exe"
     if exe.exists():
         return str(exe)
+    found = shutil.which(name)
+    if found:
+        return found
     return None
 
 
@@ -40,9 +40,10 @@ def path_for_meson(path: Path) -> str:
 
 def write_native_file(path: Path, ninja: Path | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = []
+    lines = ["[binaries]", "cpp = 'cl'"]
     if ninja is not None:
-        lines.extend(["[binaries]", f"ninja = {path_for_meson(ninja)!r}", ""])
+        lines.append(f"ninja = {path_for_meson(ninja)!r}")
+    lines.append("")
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
     return path
 
@@ -76,6 +77,18 @@ def find_opencl_libdir(opencl_root: Path, explicit: str | None = None) -> Path:
     if matches:
         return matches[0].parent
     raise FileNotFoundError(opencl_root / "**" / "OpenCL.lib")
+
+
+def find_opencl_runtime(opencl_root: Path) -> Path | None:
+    for candidate in [
+        opencl_root / "bin" / "OpenCL.dll",
+        opencl_root / "lib" / "OpenCL.dll",
+        opencl_root / "OpenCL.dll",
+    ]:
+        if candidate.exists():
+            return candidate
+    matches = sorted(opencl_root.rglob("OpenCL.dll"))
+    return matches[0] if matches else None
 
 
 def find_vapoursynth_root(deps: Path, explicit: str | None) -> Path:
@@ -132,11 +145,14 @@ def main(argv: list[str]) -> int:
 
     if args.clean and build_dir.exists():
         shutil.rmtree(build_dir)
-    native = write_native_file(build_dir.parent / "native-windows.ini")
-
     meson = find_tool("meson", args.meson)
     if meson is None:
         raise RuntimeError("meson is not on PATH; install it with `python -m pip install meson ninja`")
+    ninja = find_tool("ninja")
+    if ninja is None:
+        raise RuntimeError("ninja is not on PATH; install it with `python -m pip install meson ninja`")
+
+    native = write_native_file(build_dir.parent / "native-windows.ini", Path(ninja))
 
     setup_cmd = [
         meson,
@@ -158,7 +174,7 @@ def main(argv: list[str]) -> int:
     if build_dir.exists():
         setup_cmd.insert(2, "--reconfigure")
     run(setup_cmd, cwd=ROOT)
-    run([meson, "compile", "-C", str(build_dir), "--verbose"], cwd=ROOT)
+    run([ninja, "-C", str(build_dir), "-v"], cwd=ROOT)
 
     dist_dir.mkdir(parents=True, exist_ok=True)
     dll = build_dir / "nnedi3cl.dll"
@@ -168,6 +184,9 @@ def main(argv: list[str]) -> int:
             raise FileNotFoundError(p)
     shutil.copy2(dll, dist_dir / "nnedi3cl.dll")
     shutil.copy2(weights, dist_dir / "nnedi3_weights.bin")
+    opencl_runtime = find_opencl_runtime(opencl_root)
+    if opencl_runtime is not None:
+        shutil.copy2(opencl_runtime, dist_dir / "OpenCL.dll")
     print(f"artifact_dir={dist_dir}")
     for p in sorted(dist_dir.iterdir()):
         print(p)

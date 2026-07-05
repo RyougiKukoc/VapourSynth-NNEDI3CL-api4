@@ -5,9 +5,10 @@ project('NNEDI3CL', 'cpp',
 )
 
 cpp = meson.get_compiler('cpp')
+include_arg_prefix = cpp.get_id() == 'msvc' ? '/I' : '-I'
 
 if cpp.get_id() == 'msvc'
-  add_project_arguments('/fp:fast', language : 'cpp')
+  add_project_arguments('/fp:fast', '-DBOOST_ALL_NO_LIB', language : 'cpp')
 else
   add_project_arguments('-ffast-math', language : 'cpp')
 endif
@@ -20,7 +21,7 @@ sources = [
 
 vapoursynth_incdir = get_option('vapoursynth_incdir')
 if vapoursynth_incdir != ''
-  vapoursynth_dep = declare_dependency(include_directories : include_directories(vapoursynth_incdir))
+  vapoursynth_dep = declare_dependency(compile_args : [include_arg_prefix + vapoursynth_incdir])
   vapoursynth_libdir = get_option('libdir')
 else
   vapoursynth_dep = dependency('vapoursynth').partial_dependency(compile_args : true, includes : true)
@@ -29,7 +30,7 @@ endif
 
 boost_root = get_option('boost_root')
 if boost_root != ''
-  boost_dep = declare_dependency(include_directories : include_directories(boost_root))
+  boost_dep = declare_dependency(compile_args : [include_arg_prefix + boost_root])
 else
   if get_option('offline_cache')
     boost_dep = dependency('boost', modules : ['filesystem', 'system'])
@@ -45,12 +46,12 @@ endif
 opencl_incdir = get_option('opencl_incdir')
 opencl_libdir = get_option('opencl_libdir')
 if opencl_incdir != '' or opencl_libdir != ''
-  opencl_include = []
+  opencl_compile_args = []
   if opencl_incdir != ''
-    opencl_include = include_directories(opencl_incdir)
+    opencl_compile_args = [include_arg_prefix + opencl_incdir]
   endif
   opencl_lib = cpp.find_library('OpenCL', dirs : opencl_libdir != '' ? [opencl_libdir] : [])
-  opencl_dep = declare_dependency(include_directories : opencl_include, dependencies : opencl_lib)
+  opencl_dep = declare_dependency(compile_args : opencl_compile_args, dependencies : opencl_lib)
 else
   opencl_dep = dependency('OpenCL', required : false)
   if not opencl_dep.found()
