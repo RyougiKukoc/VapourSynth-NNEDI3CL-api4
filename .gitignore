@@ -1,6 +1,12 @@
 # Prerequisites
 *.d
 
+# Local build and verification outputs
+build*/
+verification*/
+meson-logs/
+meson-private/
+
 # Compiled Object files
 *.slo
 *.lo

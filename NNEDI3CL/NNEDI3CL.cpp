@@ -28,8 +28,8 @@
 #include <sstream>
 #include <string>
 
-#include <VapourSynth.h>
-#include <VSHelper.h>
+#include <VapourSynth4.h>
+#include <VSHelper4.h>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -58,7 +58,7 @@ static constexpr int ydiaTable[numNSIZE] = { 6, 6, 6, 6, 4, 4, 4 };
 static constexpr int nnsTable[numNNS] = { 16, 32, 64, 128, 256 };
 
 struct NNEDI3CLData {
-    VSNodeRef * node;
+    VSNode * node;
     VSVideoInfo vi;
     int field;
     bool dh, dw, process[3];
@@ -74,8 +74,8 @@ static inline int roundds(const double f) noexcept {
 }
 
 template<typename T>
-static void filter(const VSFrameRef * src, VSFrameRef * dst, const int field_n, const NNEDI3CLData * const VS_RESTRICT d, const VSAPI * vsapi) {
-    for (int plane = 0; plane < d->vi.format->numPlanes; plane++) {
+static void filter(const VSFrame * src, VSFrame * dst, const int field_n, const NNEDI3CLData * const VS_RESTRICT d, const VSAPI * vsapi) {
+    for (int plane = 0; plane < d->vi.format.numPlanes; plane++) {
         if (d->process[plane]) {
             const int srcWidth = vsapi->getFrameWidth(src, plane);
             const int dstWidth = vsapi->getFrameWidth(dst, plane);
@@ -118,26 +118,21 @@ static void filter(const VSFrameRef * src, VSFrameRef * dst, const int field_n, 
     }
 }
 
-static void VS_CC nnedi3clInit(VSMap * in, VSMap * out, void ** instanceData, VSNode * node, VSCore * core, const VSAPI * vsapi) {
-    NNEDI3CLData * d = static_cast<NNEDI3CLData *>(*instanceData);
-    vsapi->setVideoInfo(&d->vi, 1, node);
-}
-
-static const VSFrameRef * VS_CC nnedi3clGetFrame(int n, int activationReason, void ** instanceData, void ** frameData, VSFrameContext * frameCtx, VSCore * core, const VSAPI * vsapi) {
-    NNEDI3CLData * d = static_cast<NNEDI3CLData *>(*instanceData);
+static const VSFrame * VS_CC nnedi3clGetFrame(int n, int activationReason, void * instanceData, void ** frameData, VSFrameContext * frameCtx, VSCore * core, const VSAPI * vsapi) {
+    NNEDI3CLData * d = static_cast<NNEDI3CLData *>(instanceData);
 
     if (activationReason == arInitial) {
         vsapi->requestFrameFilter(d->field > 1 ? n / 2 : n, d->node, frameCtx);
     } else if (activationReason == arAllFramesReady) {
-        const VSFrameRef * src = vsapi->getFrameFilter(d->field > 1 ? n / 2 : n, d->node, frameCtx);
-        VSFrameRef * dst = vsapi->newVideoFrame(d->vi.format, d->vi.width, d->vi.height, src, core);
+        const VSFrame * src = vsapi->getFrameFilter(d->field > 1 ? n / 2 : n, d->node, frameCtx);
+        VSFrame * dst = vsapi->newVideoFrame(&d->vi.format, d->vi.width, d->vi.height, src, core);
 
         int field = d->field;
         if (field > 1)
             field -= 2;
 
         int err;
-        const int fieldBased = int64ToIntS(vsapi->propGetInt(vsapi->getFramePropsRO(src), "_FieldBased", 0, &err));
+        const int fieldBased = vsh::int64ToIntS(vsapi->mapGetInt(vsapi->getFramePropertiesRO(src), "_FieldBased", 0, &err));
         if (fieldBased == 1)
             field = 0;
         else if (fieldBased == 2)
@@ -154,9 +149,9 @@ static const VSFrameRef * VS_CC nnedi3clGetFrame(int n, int activationReason, vo
         }
 
         try {
-            if (d->vi.format->bytesPerSample == 1)
+            if (d->vi.format.bytesPerSample == 1)
                 filter<uint8_t>(src, dst, field_n, d, vsapi);
-            else if (d->vi.format->bytesPerSample == 2)
+            else if (d->vi.format.bytesPerSample == 2)
                 filter<uint16_t>(src, dst, field_n, d, vsapi);
             else
                 filter<float>(src, dst, field_n, d, vsapi);
@@ -167,17 +162,17 @@ static const VSFrameRef * VS_CC nnedi3clGetFrame(int n, int activationReason, vo
             return nullptr;
         }
 
-        VSMap * props = vsapi->getFramePropsRW(dst);
-        vsapi->propSetInt(props, "_FieldBased", 0, paReplace);
+        VSMap * props = vsapi->getFramePropertiesRW(dst);
+        vsapi->mapSetInt(props, "_FieldBased", 0, maReplace);
 
         if (d->field > 1) {
             int errNum, errDen;
-            int64_t durationNum = vsapi->propGetInt(props, "_DurationNum", 0, &errNum);
-            int64_t durationDen = vsapi->propGetInt(props, "_DurationDen", 0, &errDen);
+            int64_t durationNum = vsapi->mapGetInt(props, "_DurationNum", 0, &errNum);
+            int64_t durationDen = vsapi->mapGetInt(props, "_DurationDen", 0, &errDen);
             if (!errNum && !errDen) {
-                muldivRational(&durationNum, &durationDen, 1, 2);
-                vsapi->propSetInt(props, "_DurationNum", durationNum, paReplace);
-                vsapi->propSetInt(props, "_DurationDen", durationDen, paReplace);
+                vsh::muldivRational(&durationNum, &durationDen, 1, 2);
+                vsapi->mapSetInt(props, "_DurationNum", durationNum, maReplace);
+                vsapi->mapSetInt(props, "_DurationDen", durationDen, maReplace);
             }
         }
 
@@ -202,30 +197,30 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
     std::unique_ptr<NNEDI3CLData> d = std::make_unique<NNEDI3CLData>();
     int err;
 
-    d->node = vsapi->propGetNode(in, "clip", 0, nullptr);
+    d->node = vsapi->mapGetNode(in, "clip", 0, nullptr);
     d->vi = *vsapi->getVideoInfo(d->node);
 
     try {
-        if (!isConstantFormat(&d->vi) ||
-            (d->vi.format->sampleType == stInteger && d->vi.format->bitsPerSample > 16) ||
-            (d->vi.format->sampleType == stFloat && d->vi.format->bitsPerSample != 32))
+        if (!vsh::isConstantVideoFormat(&d->vi) ||
+            (d->vi.format.sampleType == stInteger && d->vi.format.bitsPerSample > 16) ||
+            (d->vi.format.sampleType == stFloat && d->vi.format.bitsPerSample != 32))
             throw std::string{ "only constant format 8-16 bit integer and 32 bit float input supported" };
 
-        d->field = int64ToIntS(vsapi->propGetInt(in, "field", 0, nullptr));
+        d->field = vsh::int64ToIntS(vsapi->mapGetInt(in, "field", 0, nullptr));
 
-        d->dh = !!vsapi->propGetInt(in, "dh", 0, &err);
+        d->dh = !!vsapi->mapGetInt(in, "dh", 0, &err);
 
-        d->dw = !!vsapi->propGetInt(in, "dw", 0, &err);
+        d->dw = !!vsapi->mapGetInt(in, "dw", 0, &err);
 
-        const int m = vsapi->propNumElements(in, "planes");
+        const int m = vsapi->mapNumElements(in, "planes");
 
         for (int i = 0; i < 3; i++)
             d->process[i] = (m <= 0);
 
         for (int i = 0; i < m; i++) {
-            const int n = int64ToIntS(vsapi->propGetInt(in, "planes", i, nullptr));
+            const int n = vsh::int64ToIntS(vsapi->mapGetInt(in, "planes", i, nullptr));
 
-            if (n < 0 || n >= d->vi.format->numPlanes)
+            if (n < 0 || n >= d->vi.format.numPlanes)
                 throw std::string{ "plane index out of range" };
 
             if (d->process[n])
@@ -234,25 +229,25 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
             d->process[n] = true;
         }
 
-        int nsize = int64ToIntS(vsapi->propGetInt(in, "nsize", 0, &err));
+        int nsize = vsh::int64ToIntS(vsapi->mapGetInt(in, "nsize", 0, &err));
         if (err)
             nsize = 6;
 
-        int nns = int64ToIntS(vsapi->propGetInt(in, "nns", 0, &err));
+        int nns = vsh::int64ToIntS(vsapi->mapGetInt(in, "nns", 0, &err));
         if (err)
             nns = 1;
 
-        int qual = int64ToIntS(vsapi->propGetInt(in, "qual", 0, &err));
+        int qual = vsh::int64ToIntS(vsapi->mapGetInt(in, "qual", 0, &err));
         if (err)
             qual = 1;
 
-        const int etype = int64ToIntS(vsapi->propGetInt(in, "etype", 0, &err));
+        const int etype = vsh::int64ToIntS(vsapi->mapGetInt(in, "etype", 0, &err));
 
-        int pscrn = int64ToIntS(vsapi->propGetInt(in, "pscrn", 0, &err));
+        int pscrn = vsh::int64ToIntS(vsapi->mapGetInt(in, "pscrn", 0, &err));
         if (err)
-            pscrn = (d->vi.format->sampleType == stInteger) ? 2 : 1;
+            pscrn = (d->vi.format.sampleType == stInteger) ? 2 : 1;
 
-        int device_id = int64ToIntS(vsapi->propGetInt(in, "device", 0, &err));
+        int device_id = vsh::int64ToIntS(vsapi->mapGetInt(in, "device", 0, &err));
         if (err)
             device_id = -1;
 
@@ -280,7 +275,7 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
         if (etype < 0 || etype > 1)
             throw std::string{ "etype must be 0 or 1" };
 
-        if (d->vi.format->sampleType == stInteger) {
+        if (d->vi.format.sampleType == stInteger) {
             if (pscrn < 1 || pscrn > 2)
                 throw std::string{ "pscrn must be 1 or 2" };
         } else {
@@ -291,7 +286,7 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
         if (device_id >= static_cast<int>(compute::system::device_count()))
             throw std::string{ "device index out of range" };
 
-        if (!!vsapi->propGetInt(in, "list_device", 0, &err)) {
+        if (!!vsapi->mapGetInt(in, "list_device", 0, &err)) {
             const auto devices = compute::system::devices();
             std::string text;
 
@@ -299,22 +294,22 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
                 text += std::to_string(i) + ": " + devices[i].name() + " (" + devices[i].platform().name() + ")" + "\n";
 
             VSMap * args = vsapi->createMap();
-            vsapi->propSetNode(args, "clip", d->node, paReplace);
+            vsapi->mapSetNode(args, "clip", d->node, maReplace);
             vsapi->freeNode(d->node);
-            vsapi->propSetData(args, "text", text.c_str(), -1, paReplace);
+            vsapi->mapSetData(args, "text", text.c_str(), -1, dtUtf8, maReplace);
 
-            VSMap * ret = vsapi->invoke(vsapi->getPluginById("com.vapoursynth.text", core), "Text", args);
-            if (vsapi->getError(ret)) {
-                vsapi->setError(out, vsapi->getError(ret));
+            VSMap * ret = vsapi->invoke(vsapi->getPluginByID("com.vapoursynth.text", core), "Text", args);
+            if (vsapi->mapGetError(ret)) {
+                vsapi->mapSetError(out, vsapi->mapGetError(ret));
                 vsapi->freeMap(args);
                 vsapi->freeMap(ret);
                 return;
             }
 
-            d->node = vsapi->propGetNode(ret, "clip", 0, nullptr);
+            d->node = vsapi->mapGetNode(ret, "clip", 0, nullptr);
             vsapi->freeMap(args);
             vsapi->freeMap(ret);
-            vsapi->propSetNode(out, "clip", d->node, paReplace);
+            vsapi->mapSetNode(out, "clip", d->node, maReplace);
             vsapi->freeNode(d->node);
             return;
         }
@@ -325,7 +320,7 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
         compute::context context{ device };
         d->queue = compute::command_queue{ context, device };
 
-        if (!!vsapi->propGetInt(in, "info", 0, &err)) {
+        if (!!vsapi->mapGetInt(in, "info", 0, &err)) {
             std::string text{ "=== Platform Info ===\n" };
             const auto platform = device.platform();
             text += "Profile: " + platform.get_info<CL_PLATFORM_PROFILE>() + "\n";
@@ -367,22 +362,22 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
             text += "Image max buffer size: " + std::to_string(device.get_info<size_t>(CL_DEVICE_IMAGE_MAX_BUFFER_SIZE) / 1024) + " KB";
 
             VSMap * args = vsapi->createMap();
-            vsapi->propSetNode(args, "clip", d->node, paReplace);
+            vsapi->mapSetNode(args, "clip", d->node, maReplace);
             vsapi->freeNode(d->node);
-            vsapi->propSetData(args, "text", text.c_str(), -1, paReplace);
+            vsapi->mapSetData(args, "text", text.c_str(), -1, dtUtf8, maReplace);
 
-            VSMap * ret = vsapi->invoke(vsapi->getPluginById("com.vapoursynth.text", core), "Text", args);
-            if (vsapi->getError(ret)) {
-                vsapi->setError(out, vsapi->getError(ret));
+            VSMap * ret = vsapi->invoke(vsapi->getPluginByID("com.vapoursynth.text", core), "Text", args);
+            if (vsapi->mapGetError(ret)) {
+                vsapi->mapSetError(out, vsapi->mapGetError(ret));
                 vsapi->freeMap(args);
                 vsapi->freeMap(ret);
                 return;
             }
 
-            d->node = vsapi->propGetNode(ret, "clip", 0, nullptr);
+            d->node = vsapi->mapGetNode(ret, "clip", 0, nullptr);
             vsapi->freeMap(args);
             vsapi->freeMap(ret);
-            vsapi->propSetNode(out, "clip", d->node, paReplace);
+            vsapi->mapSetNode(out, "clip", d->node, maReplace);
             vsapi->freeNode(d->node);
             return;
         }
@@ -392,7 +387,7 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
                 throw std::string{ "resulting clip is too long" };
             d->vi.numFrames *= 2;
 
-            muldivRational(&d->vi.fpsNum, &d->vi.fpsDen, 2, 1);
+            vsh::muldivRational(&d->vi.fpsNum, &d->vi.fpsDen, 2, 1);
         }
 
         if (d->dh)
@@ -401,9 +396,9 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
         if (d->dw)
             d->vi.width *= 2;
 
-        const int peak = (1 << d->vi.format->bitsPerSample) - 1;
+        const int peak = (1 << d->vi.format.bitsPerSample) - 1;
 
-        const std::string pluginPath{ vsapi->getPluginPath(vsapi->getPluginById("com.holywu.nnedi3cl", core)) };
+        const std::string pluginPath{ vsapi->getPluginPath(vsapi->getPluginByID("com.holywu.nnedi3cl", core)) };
         std::string weightsPath{ pluginPath.substr(0, pluginPath.find_last_of('/')) + "/nnedi3_weights.bin" };
 
         FILE * weightsFile = nullptr;
@@ -521,7 +516,7 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
                 mean[j] = cmean / 48.0;
             }
 
-            const double half = (d->vi.format->sampleType == stInteger ? peak : 1.0) / 2.0;
+            const double half = (d->vi.format.sampleType == stInteger ? peak : 1.0) / 2.0;
 
             // Factor mean removal and 1.0/half scaling into first layer weights
             for (int j = 0; j < 4; j++) {
@@ -638,15 +633,15 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
             throw error.error_string() + "\n" + program.build_log();
         }
 
-        if (d->vi.format->sampleType == stInteger)
+        if (d->vi.format.sampleType == stInteger)
             d->kernel = program.create_kernel("filter_uint");
         else
             d->kernel = program.create_kernel("filter_float");
 
         cl_image_format imageFormat;
-        if (d->vi.format->bytesPerSample == 1)
+        if (d->vi.format.bytesPerSample == 1)
             imageFormat = { CL_R, CL_UNSIGNED_INT8 };
-        else if (d->vi.format->bytesPerSample == 2)
+        else if (d->vi.format.bytesPerSample == 2)
             imageFormat = { CL_R, CL_UNSIGNED_INT16 };
         else
             imageFormat = { CL_R, CL_FLOAT };
@@ -698,29 +693,30 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
             d->weights1 = mem;
         }
     } catch (const std::string & error) {
-        vsapi->setError(out, ("NNEDI3CL: " + error).c_str());
+        vsapi->mapSetError(out, ("NNEDI3CL: " + error).c_str());
         vsapi->freeNode(d->node);
         return;
     } catch (const compute::no_device_found & error) {
-        vsapi->setError(out, (std::string{ "NNEDI3CL: " } + error.what()).c_str());
+        vsapi->mapSetError(out, (std::string{ "NNEDI3CL: " } + error.what()).c_str());
         vsapi->freeNode(d->node);
         return;
     } catch (const compute::opencl_error & error) {
-        vsapi->setError(out, ("NNEDI3CL: " + error.error_string()).c_str());
+        vsapi->mapSetError(out, ("NNEDI3CL: " + error.error_string()).c_str());
         vsapi->freeNode(d->node);
         return;
     }
 
-    vsapi->createFilter(in, out, "NNEDI3CL", nnedi3clInit, nnedi3clGetFrame, nnedi3clFree, fmParallelRequests, 0, d.release(), core);
+    VSFilterDependency deps[] = {{ d->node, rpGeneral }};
+    vsapi->createVideoFilter(out, "NNEDI3CL", &d->vi, nnedi3clGetFrame, nnedi3clFree, fmParallelRequests, deps, 1, d.release(), core);
 }
 
 //////////////////////////////////////////
 // Init
 
-VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegisterFunction registerFunc, VSPlugin * plugin) {
-    configFunc("com.holywu.nnedi3cl", "nnedi3cl", "An intra-field only deinterlacer", VAPOURSYNTH_API_VERSION, 1, plugin);
-    registerFunc("NNEDI3CL",
-                 "clip:clip;"
+VS_EXTERNAL_API(void) VapourSynthPluginInit2(VSPlugin * plugin, const VSPLUGINAPI * vspapi) {
+    vspapi->configPlugin("com.holywu.nnedi3cl", "nnedi3cl", "An intra-field only deinterlacer", VS_MAKE_VERSION(8, 0), VAPOURSYNTH_API_VERSION, 0, plugin);
+    vspapi->registerFunction("NNEDI3CL",
+                 "clip:vnode;"
                  "field:int;"
                  "dh:int:opt;"
                  "dw:int:opt;"
@@ -733,5 +729,6 @@ VS_EXTERNAL_API(void) VapourSynthPluginInit(VSConfigPlugin configFunc, VSRegiste
                  "device:int:opt;"
                  "list_device:int:opt;"
                  "info:int:opt;",
+                 "clip:vnode;",
                  nnedi3clCreate, nullptr, plugin);
 }
