@@ -54,6 +54,7 @@ jobs:
           "%pythonLocation%\python.exe" tools\smoke_load_artifact.py
           --vapoursynth-root _deps\vapoursynth-wheel-R77
           --artifact-dir dist\msys2-ucrt64
+          --exercise-filter
 
       - name: Smoke-load artifact through manifest autoload
         shell: cmd
@@ -62,6 +63,7 @@ jobs:
           --vapoursynth-root _deps\vapoursynth-wheel-R77
           --artifact-dir dist\msys2-ucrt64
           --autoload
+          --exercise-filter
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

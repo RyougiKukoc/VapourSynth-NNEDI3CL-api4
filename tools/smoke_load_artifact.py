@@ -13,6 +13,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--vapoursynth-root", help="VapourSynth portable root or extracted wheel root.")
     parser.add_argument("--artifact-dir", required=True)
     parser.add_argument("--autoload", action="store_true", help="Load through VAPOURSYNTH_EXTRA_PLUGIN_PATH instead of std.LoadPlugin.")
+    parser.add_argument("--exercise-filter", action="store_true", help="Create an NNEDI3CL node and request one frame if OpenCL is available.")
     args = parser.parse_args(argv)
 
     vs_root = Path(args.vapoursynth_root).resolve() if args.vapoursynth_root else None
@@ -87,6 +88,33 @@ def main(argv: list[str]) -> int:
         print("core.nnedi3cl.NNEDI3CL missing after LoadPlugin", file=sys.stderr)
         return 1
     print(core.nnedi3cl.NNEDI3CL)
+
+    if args.exercise_filter:
+        try:
+            clip = core.std.BlankClip(format=vs.YUV420P8, width=64, height=32, length=1)
+            filtered = core.nnedi3cl.NNEDI3CL(clip, field=1, dh=True)
+            frame = filtered.get_frame(0)
+        except Exception as exc:
+            message = str(exc)
+            no_device_markers = [
+                "no device",
+                "no OpenCL",
+                "CL_DEVICE_NOT_FOUND",
+                "device not found",
+            ]
+            if any(marker.lower() in message.lower() for marker in no_device_markers):
+                print(f"skipping filter exercise: {message}", file=sys.stderr)
+                return 0
+            print(f"filter exercise failed: {message}", file=sys.stderr)
+            return 1
+
+        if filtered.width != 64 or filtered.height != 64 or frame.width != 64 or frame.height != 64:
+            print(
+                f"unexpected filter output size: node={filtered.width}x{filtered.height}, frame={frame.width}x{frame.height}",
+                file=sys.stderr,
+            )
+            return 1
+        print("filter exercise: 64x64")
     return 0
 
 

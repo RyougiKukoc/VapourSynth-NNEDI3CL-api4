@@ -43,6 +43,7 @@ jobs:
           python tools/smoke_load_artifact.py
           --vapoursynth-root _deps/vapoursynth-portable-R73
           --artifact-dir dist/windows-x64
+          --exercise-filter
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

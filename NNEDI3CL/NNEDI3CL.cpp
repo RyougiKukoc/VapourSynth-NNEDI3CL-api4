@@ -708,8 +708,10 @@ void VS_CC nnedi3clCreate(const VSMap * in, VSMap * out, void * userData, VSCore
         return;
     }
 
-    VSFilterDependency deps[] = {{ d->node, rpGeneral }};
-    vsapi->createVideoFilter(out, "NNEDI3CL", &d->vi, nnedi3clGetFrame, nnedi3clFree, fmParallelRequests, deps, 1, d.release(), core);
+    NNEDI3CLData *data = d.get();
+    VSFilterDependency deps[] = {{ data->node, rpGeneral }};
+    vsapi->createVideoFilter(out, "NNEDI3CL", &data->vi, nnedi3clGetFrame, nnedi3clFree, fmParallelRequests, deps, 1, data, core);
+    d.release();
 }
 
 //////////////////////////////////////////
