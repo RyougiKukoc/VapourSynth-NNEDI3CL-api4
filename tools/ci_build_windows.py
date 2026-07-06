@@ -126,6 +126,7 @@ def main(argv: list[str]) -> int:
     deps = Path(args.deps_dir).resolve()
     build_dir = Path(args.build_dir).resolve()
     dist_dir = Path(args.dist_dir).resolve()
+    pkg_dir = dist_dir / "nnedi3cl"
 
     vapoursynth_root = find_vapoursynth_root(deps, args.vapoursynth_root)
     boost_root = Path(args.boost_root).resolve() if args.boost_root else deps / "boost-1.71.0"
@@ -145,6 +146,8 @@ def main(argv: list[str]) -> int:
 
     if args.clean and build_dir.exists():
         shutil.rmtree(build_dir)
+    if args.clean and dist_dir.exists():
+        shutil.rmtree(dist_dir)
     meson = find_tool("meson", args.meson)
     if meson is None:
         raise RuntimeError("meson is not on PATH; install it with `python -m pip install meson ninja`")
@@ -166,7 +169,7 @@ def main(argv: list[str]) -> int:
         "--buildtype",
         "release",
         f"-Dvapoursynth_incdir={path_for_meson(vapoursynth_root / 'sdk' / 'include' / 'vapoursynth')}",
-        f"-Dvapoursynth_plugindir={path_for_meson(dist_dir)}",
+        f"-Dvapoursynth_plugindir={path_for_meson(pkg_dir)}",
         f"-Dboost_root={path_for_meson(boost_root)}",
         f"-Dopencl_incdir={path_for_meson(opencl_headers)}",
         f"-Dopencl_libdir={path_for_meson(opencl_libdir)}",
@@ -176,19 +179,19 @@ def main(argv: list[str]) -> int:
     run(setup_cmd, cwd=ROOT)
     run([ninja, "-C", str(build_dir), "-v"], cwd=ROOT)
 
-    dist_dir.mkdir(parents=True, exist_ok=True)
+    pkg_dir.mkdir(parents=True, exist_ok=True)
     dll = build_dir / "nnedi3cl.dll"
     weights = ROOT / "NNEDI3CL" / "nnedi3_weights.bin"
     for p in [dll, weights]:
         if not p.exists():
             raise FileNotFoundError(p)
-    shutil.copy2(dll, dist_dir / "nnedi3cl.dll")
-    shutil.copy2(weights, dist_dir / "nnedi3_weights.bin")
+    shutil.copy2(dll, pkg_dir / "nnedi3cl.dll")
+    shutil.copy2(weights, pkg_dir / "nnedi3_weights.bin")
     opencl_runtime = find_opencl_runtime(opencl_root)
     if opencl_runtime is not None:
-        shutil.copy2(opencl_runtime, dist_dir / "OpenCL.dll")
+        shutil.copy2(opencl_runtime, pkg_dir / "OpenCL.dll")
     print(f"artifact_dir={dist_dir}")
-    for p in sorted(dist_dir.iterdir()):
+    for p in sorted(pkg_dir.iterdir()):
         print(p)
     return 0
 

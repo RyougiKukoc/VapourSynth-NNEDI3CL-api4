@@ -49,7 +49,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nnedi3cl-windows-x64
-          path: |
-            dist/windows-x64/nnedi3cl.dll
-            dist/windows-x64/nnedi3_weights.bin
-            dist/windows-x64/OpenCL.dll
+          path: dist/windows-x64

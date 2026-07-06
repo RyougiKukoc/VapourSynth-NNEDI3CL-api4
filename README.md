@@ -168,12 +168,14 @@ MSVC Compatibility Build
 
 `.github/workflows/build-windows.yml` is retained as a compatibility build. It
 uses MSVC, the official VapourSynth R73 portable SDK, Boost 1.71.0 headers, and
-a locally built Khronos OpenCL ICD loader. It uploads a flat artifact:
+a locally built Khronos OpenCL ICD loader. It uploads the same top-level plugin
+directory shape:
 
 ```text
-nnedi3cl.dll
-nnedi3_weights.bin
-OpenCL.dll
+nnedi3cl/
+  nnedi3cl.dll
+  nnedi3_weights.bin
+  OpenCL.dll
 ```
 
 Local MSVC builds still require an x64 Developer Command Prompt:
