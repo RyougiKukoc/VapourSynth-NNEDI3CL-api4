@@ -67,4 +67,4 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nnedi3cl-msys2-ucrt64
-          path: dist/msys2-ucrt64/nnedi3cl
+          path: dist/msys2-ucrt64
