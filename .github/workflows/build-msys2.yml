@@ -4,8 +4,16 @@ on:
   push:
     branches:
       - master
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -65,8 +73,25 @@ jobs:
           --autoload
           --exercise-filter
 
+      - name: Pack release asset
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\package_plugin_zip.py
+          --input-dir dist\msys2-ucrt64
+          --output dist\nnedi3cl-msys2-ucrt64.zip
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: nnedi3cl-msys2-ucrt64
           path: dist/msys2-ucrt64
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+        shell: cmd
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "%RELEASE_TAG%" >NUL 2>NUL || gh release create "%RELEASE_TAG%" --title "%RELEASE_TAG%" --notes "Automated MSYS2/UCRT64 build."
+          gh release upload "%RELEASE_TAG%" dist\nnedi3cl-msys2-ucrt64.zip --clobber

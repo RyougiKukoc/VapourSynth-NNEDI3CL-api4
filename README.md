@@ -68,6 +68,10 @@ The preferred reproducible Windows build is the MSYS2/UCRT64 workflow in
 headers and smoke loading, and uses MSYS2 packages for the C++ compiler, Boost,
 OpenCL headers, and the Khronos OpenCL ICD loader.
 
+This is the main compiling workflow. Pushes and pull requests run only the
+MSYS2/UCRT64 workflow by default. The MSVC workflow is retained as a manual
+compatibility check and is not triggered automatically.
+
 The uploaded artifact is laid out as a VapourSynth plugin package:
 
 ```
@@ -109,10 +113,16 @@ The workflow performs these steps:
 7. Recursively scan DLL dependencies with `objdump -p` and copy needed MSYS2
    runtime DLLs next to the plugin.
 8. Smoke-load the result with VapourSynth R77.
+9. Pack `dist/nnedi3cl-msys2-ucrt64.zip` for release publishing. The zip
+   preserves `nnedi3cl/` as its top-level directory.
 
 The build defines `CL_TARGET_OPENCL_VERSION=120`. This keeps Boost.Compute
 compatible with current Khronos OpenCL headers, whose default target is OpenCL
 3.0.
+
+Release publishing is handled by the MSYS2 workflow. Push a `v*` tag or publish
+a GitHub Release, and the workflow will upload
+`dist/nnedi3cl-msys2-ucrt64.zip` to that release using `GITHUB_TOKEN`.
 
 
 Local MSYS2 Build
@@ -166,10 +176,10 @@ dist/msys2-ucrt64/nnedi3cl/
 MSVC Compatibility Build
 ------------------------
 
-`.github/workflows/build-windows.yml` is retained as a compatibility build. It
-uses MSVC, the official VapourSynth R73 portable SDK, Boost 1.71.0 headers, and
-a locally built Khronos OpenCL ICD loader. It uploads the same top-level plugin
-directory shape:
+`.github/workflows/build-windows.yml` is retained as a manual-only compatibility
+build. It uses MSVC, the official VapourSynth R73 portable SDK, Boost 1.71.0
+headers, and a locally built Khronos OpenCL ICD loader. It uploads the same
+top-level plugin directory shape:
 
 ```text
 nnedi3cl/
