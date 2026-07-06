@@ -13,6 +13,7 @@ else
   add_project_arguments('-ffast-math', language : 'cpp')
 endif
 
+add_project_arguments('-DCL_TARGET_OPENCL_VERSION=120', language : 'cpp')
 add_project_arguments('-DNNEDI3_DATADIR="@0@"'.format(join_paths(get_option('prefix'), get_option('datadir'), meson.project_name())), language : 'cpp')
 
 sources = [

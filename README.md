@@ -63,58 +63,122 @@ The file `nnedi3_weights.bin` is required. On Windows, it must be located in the
 Compilation
 ===========
 
-The easiest reproducible Windows build is the GitHub Actions workflow in
-`.github/workflows/build-windows.yml`. It downloads the exact SDK/dependencies,
-builds `nnedi3cl.dll`, smoke-loads the result with VapourSynth, and uploads an
-artifact containing:
+The preferred reproducible Windows build is the MSYS2/UCRT64 workflow in
+`.github/workflows/build-msys2.yml`. It uses the VapourSynth R77 wheel for API4
+headers and smoke loading, and uses MSYS2 packages for the C++ compiler, Boost,
+OpenCL headers, and the Khronos OpenCL ICD loader.
+
+The uploaded artifact is laid out as a VapourSynth plugin package:
 
 ```
+vapoursynth/plugins/nnedi3cl/
+  manifest.vs
+  nnedi3cl.dll
+  nnedi3_weights.bin
+  OpenCL.dll
+  libgcc_s_seh-1.dll
+  libstdc++-6.dll
+  libwinpthread-1.dll
+```
+
+Install it by copying the `nnedi3cl` directory under
+`<site-packages>/vapoursynth/plugins/`, or unzip the artifact at
+`<site-packages>` so the path above is preserved. For testing without
+installing, set `VAPOURSYNTH_EXTRA_PLUGIN_PATH` to the artifact's
+`vapoursynth/plugins` directory.
+
+`manifest.vs` tells VapourSynth to load only `nnedi3cl.dll` from this directory.
+The remaining DLLs are support libraries and are kept next to the plugin so the
+Windows loader can resolve them. `OpenCL.dll` is only the Khronos ICD loader; a
+real OpenCL driver/runtime is still required when actually running the filter.
+
+
+MSYS2/R77 CI Pipeline
+---------------------
+
+The workflow performs these steps:
+
+1. Install MSYS2 UCRT64 packages: GCC, Meson, Ninja, pkgconf, Boost, OpenCL
+   headers, and OpenCL ICD loader.
+2. Download the VapourSynth R77 wheel with normal CPython and extract it under
+   `_deps/vapoursynth-wheel-R77`.
+3. Generate a normalized `vapoursynth.pc` for the extracted wheel. The wheel
+   already ships headers, but its pkg-config file is meant for installed wheel
+   layout, not direct extraction.
+4. Configure Meson through pkg-config.
+5. Build `nnedi3cl.dll` with MinGW/UCRT64.
+6. Package the plugin as `vapoursynth/plugins/nnedi3cl/`.
+7. Recursively scan DLL dependencies with `objdump -p` and copy needed MSYS2
+   runtime DLLs next to the plugin.
+8. Smoke-load the result with VapourSynth R77.
+
+The build defines `CL_TARGET_OPENCL_VERSION=120`. This keeps Boost.Compute
+compatible with current Khronos OpenCL headers, whose default target is OpenCL
+3.0.
+
+
+Local MSYS2 Build
+-----------------
+
+Required tools:
+
+- A UCRT64 MSYS2 environment.
+- Normal Windows CPython, or another Python able to run `pip download`, for
+  `tools/ci_prepare_msys2.py`.
+
+Install the MSYS2 packages:
+
+```bash
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-gcc \
+  mingw-w64-ucrt-x86_64-python \
+  mingw-w64-ucrt-x86_64-meson \
+  mingw-w64-ucrt-x86_64-ninja \
+  mingw-w64-ucrt-x86_64-pkgconf \
+  mingw-w64-ucrt-x86_64-boost \
+  mingw-w64-ucrt-x86_64-opencl-headers \
+  mingw-w64-ucrt-x86_64-opencl-icd
+```
+
+Prepare the R77 wheel files from a normal Windows shell:
+
+```bat
+python tools\ci_prepare_msys2.py
+```
+
+Build from an MSYS2 UCRT64 shell:
+
+```bash
+/ucrt64/bin/python tools/ci_build_msys2.py --clean
+```
+
+Smoke-load from the normal Windows Python used above:
+
+```bat
+python tools\smoke_load_artifact.py --vapoursynth-root _deps\vapoursynth-wheel-R77 --artifact-dir dist\msys2-ucrt64
+```
+
+Output layout:
+
+```text
+dist/msys2-ucrt64/vapoursynth/plugins/nnedi3cl/
+```
+
+
+MSVC Compatibility Build
+------------------------
+
+`.github/workflows/build-windows.yml` is retained as a compatibility build. It
+uses MSVC, the official VapourSynth R73 portable SDK, Boost 1.71.0 headers, and
+a locally built Khronos OpenCL ICD loader. It uploads a flat artifact:
+
+```text
 nnedi3cl.dll
 nnedi3_weights.bin
 OpenCL.dll
 ```
 
-Download the artifact and put these files in the same plugin directory. On
-Windows the weights file must sit next to `nnedi3cl.dll`. `OpenCL.dll` is the Khronos
-ICD loader used for linking and loading; a real OpenCL runtime/driver is still
-required when actually running the filter.
-
-
-Windows CI Pipeline
--------------------
-
-The workflow performs these steps:
-
-1. Install Python build tools: `meson` and `ninja`.
-2. Enter an x64 MSVC developer environment.
-3. Download `VapourSynth64-Portable-R73.zip` from the official VapourSynth
-   release and use its API4 SDK headers/import library.
-4. Download Boost 1.71.0. The default build only needs Boost headers. Boost
-   filesystem/system libraries are only needed if `-Doffline_cache=true` is
-   enabled.
-5. Download Khronos OpenCL headers and build the Khronos OpenCL ICD loader with
-   MSVC to obtain `OpenCL.lib` and `OpenCL.dll`.
-6. Configure Meson with explicit dependency paths.
-7. Build `nnedi3cl.dll`.
-8. Copy `nnedi3_weights.bin` and `OpenCL.dll` next to the DLL and smoke-load
-   the plugin with VapourSynth.
-
-This intentionally avoids requiring a full CUDA installation just to compile.
-The bundled `OpenCL.dll` is only the Khronos ICD loader; a real OpenCL
-runtime/driver is still required when actually running the filter.
-
-
-Local Windows Build
--------------------
-
-Required tools:
-
-- Visual Studio Build Tools or Visual Studio with the x64 C++ toolchain.
-- Python 3.12+ for the bundled VapourSynth R73 wheel used by the smoke test.
-- Git.
-- CMake.
-
-From an x64 Developer Command Prompt:
+Local MSVC builds still require an x64 Developer Command Prompt:
 
 ```bat
 python -m pip install --upgrade meson ninja
@@ -122,19 +186,6 @@ python tools\ci_prepare_windows.py
 python tools\ci_build_windows.py --clean
 python tools\smoke_load_artifact.py --vapoursynth-root _deps\vapoursynth-portable-R73 --artifact-dir dist\windows-x64
 ```
-
-Output:
-
-```text
-dist/windows-x64/nnedi3cl.dll
-dist/windows-x64/nnedi3_weights.bin
-dist/windows-x64/OpenCL.dll
-```
-
-If `tools\ci_prepare_windows.py` reports that CMake used GCC/MinGW or cannot
-find `OpenCL.lib`, start a fresh x64 Developer Command Prompt and rerun it. The
-plugin is built with MSVC, so the OpenCL import library must be produced by the
-same toolchain family.
 
 If you already have dependencies installed, Meson can be invoked directly:
 
