@@ -19,9 +19,13 @@ def main(argv: list[str]) -> int:
     artifact_root = Path(args.artifact_dir).resolve()
     artifact = artifact_root
     if not (artifact / "nnedi3cl.dll").exists():
-        nested = artifact / "vapoursynth" / "plugins" / "nnedi3cl"
-        if (nested / "nnedi3cl.dll").exists():
-            artifact = nested
+        for nested in [
+            artifact / "nnedi3cl",
+            artifact / "vapoursynth" / "plugins" / "nnedi3cl",
+        ]:
+            if (nested / "nnedi3cl.dll").exists():
+                artifact = nested
+                break
     plugin = artifact / "nnedi3cl.dll"
     weights = artifact / "nnedi3_weights.bin"
     opencl_runtime = artifact / "OpenCL.dll"
@@ -60,6 +64,8 @@ def main(argv: list[str]) -> int:
         plugin_root = artifact.parent
         if artifact_root.joinpath("vapoursynth", "plugins").exists():
             plugin_root = artifact_root / "vapoursynth" / "plugins"
+        elif artifact_root.joinpath("nnedi3cl").exists():
+            plugin_root = artifact_root
         os.environ["VAPOURSYNTH_EXTRA_PLUGIN_PATH"] = str(plugin_root)
 
     try:

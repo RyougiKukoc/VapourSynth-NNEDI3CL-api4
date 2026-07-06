@@ -71,7 +71,7 @@ OpenCL headers, and the Khronos OpenCL ICD loader.
 The uploaded artifact is laid out as a VapourSynth plugin package:
 
 ```
-vapoursynth/plugins/nnedi3cl/
+nnedi3cl/
   manifest.vs
   nnedi3cl.dll
   nnedi3_weights.bin
@@ -82,10 +82,8 @@ vapoursynth/plugins/nnedi3cl/
 ```
 
 Install it by copying the `nnedi3cl` directory under
-`<site-packages>/vapoursynth/plugins/`, or unzip the artifact at
-`<site-packages>` so the path above is preserved. For testing without
-installing, set `VAPOURSYNTH_EXTRA_PLUGIN_PATH` to the artifact's
-`vapoursynth/plugins` directory.
+`<site-packages>/vapoursynth/plugins/`. For testing without installing, set
+`VAPOURSYNTH_EXTRA_PLUGIN_PATH` to the directory containing `nnedi3cl`.
 
 `manifest.vs` tells VapourSynth to load only `nnedi3cl.dll` from this directory.
 The remaining DLLs are support libraries and are kept next to the plugin so the
@@ -107,7 +105,7 @@ The workflow performs these steps:
    layout, not direct extraction.
 4. Configure Meson through pkg-config.
 5. Build `nnedi3cl.dll` with MinGW/UCRT64.
-6. Package the plugin as `vapoursynth/plugins/nnedi3cl/`.
+6. Package the plugin as `nnedi3cl/`.
 7. Recursively scan DLL dependencies with `objdump -p` and copy needed MSYS2
    runtime DLLs next to the plugin.
 8. Smoke-load the result with VapourSynth R77.
@@ -161,7 +159,7 @@ python tools\smoke_load_artifact.py --vapoursynth-root _deps\vapoursynth-wheel-R
 Output layout:
 
 ```text
-dist/msys2-ucrt64/vapoursynth/plugins/nnedi3cl/
+dist/msys2-ucrt64/nnedi3cl/
 ```
 
 

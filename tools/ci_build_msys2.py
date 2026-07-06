@@ -105,7 +105,7 @@ def main(argv: list[str]) -> int:
     deps = Path(args.deps_dir).resolve()
     build_dir = Path(args.build_dir).resolve()
     dist_dir = Path(args.dist_dir).resolve()
-    pkg_dir = dist_dir / "vapoursynth" / "plugins" / "nnedi3cl"
+    pkg_dir = dist_dir / "nnedi3cl"
     vs_root = Path(args.vapoursynth_wheel_root).resolve() if args.vapoursynth_wheel_root else deps / "vapoursynth-wheel-R77"
     vs_pkg = vs_root / "vapoursynth"
     for p in [
