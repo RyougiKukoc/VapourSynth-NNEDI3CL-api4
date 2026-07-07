@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling>=1.30", "packaging>=24.0", "meson>=0.48", "ninja"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vapoursynth-nnedi3cl"
+version = "8.0"
+description = "NNEDI3CL VapourSynth plugin packaged for pip installation"
+readme = "README.md"
+license = { text = "GPL-2.0-or-later" }
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "NNEDI3CL contributors" }]
+dependencies = ["VapourSynth>=77"]
+
+[project.urls]
+"Source Code" = "https://github.com/RyougiKukoc/VapourSynth-NNEDI3CL-api4"
+"Releases" = "https://github.com/RyougiKukoc/VapourSynth-NNEDI3CL-api4/releases"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "LICENSE",
+  "README.md",
+  "NNEDI3CL",
+  "hatch_build.py",
+  "meson.build",
+  "meson_options.txt",
+  "pyproject.toml",
+  "tools",
+]
+
+[tool.hatch.build.targets.wheel]
+include = ["vapoursynth/plugins"]
+artifacts = ["vapoursynth/plugins/**/*"]
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"

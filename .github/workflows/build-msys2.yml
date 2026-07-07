@@ -33,6 +33,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Python packaging tools
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" -m pip install --upgrade pip build hatchling packaging VapourSynth
+
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -73,12 +78,43 @@ jobs:
           --autoload
           --exercise-filter
 
-      - name: Pack release asset
+      - name: Build wheel from source
+        shell: cmd
+        env:
+          NNEDI3CL_FORCE_BUILD: "1"
+        run: >-
+          "%pythonLocation%\python.exe" -m build --wheel --no-isolation --outdir dist\wheels
+
+      - name: Create release assets
         shell: cmd
         run: >-
-          "%pythonLocation%\python.exe" tools\package_plugin_zip.py
-          --input-dir dist\msys2-ucrt64
-          --output dist\nnedi3cl-msys2-ucrt64.zip
+          "%pythonLocation%\python.exe" tools\ci_make_release_assets.py --clean
+
+      - name: Smoke-load release zip
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\ci_smoke_package.py
+          --artifact-zip dist\release-assets\nnedi3cl-msys2-ucrt64.zip
+          --exercise-filter
+
+      - name: Install built wheel
+        shell: cmd
+        run: >-
+          for %%I in (dist\wheels\*.whl) do "%pythonLocation%\python.exe" -m pip install --force-reinstall "%%~fI"
+
+      - name: Smoke test installed wheel
+        shell: cmd
+        run: >-
+          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter
+
+      - name: Smoke test source install with prebuilt release asset
+        shell: cmd
+        env:
+          NNEDI3CL_PREBUILT_URL: ${{ github.workspace }}\dist\release-assets\nnedi3cl-msys2-ucrt64.zip
+        run: |
+          "%pythonLocation%\python.exe" -m pip uninstall -y vapoursynth-nnedi3cl
+          "%pythonLocation%\python.exe" -m pip install --force-reinstall --no-deps --no-build-isolation -v .
+          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -86,12 +122,30 @@ jobs:
           name: nnedi3cl-msys2-ucrt64
           path: dist/msys2-ucrt64
 
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nnedi3cl-wheel-win64
+          path: dist/wheels
+
+      - name: Upload release assets artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nnedi3cl-release-assets
+          path: dist/release-assets
+
       - name: Upload release asset
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
-        shell: cmd
+        shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
-          gh release view "%RELEASE_TAG%" >NUL 2>NUL || gh release create "%RELEASE_TAG%" --title "%RELEASE_TAG%" --notes "Automated MSYS2/UCRT64 build."
-          gh release upload "%RELEASE_TAG%" dist\nnedi3cl-msys2-ucrt64.zip --clobber
+          $tag = $env:RELEASE_TAG
+          $assets = Get-ChildItem dist\release-assets\* | Select-Object -ExpandProperty FullName
+          & cmd.exe /d /c "gh release view $tag --repo $env:GITHUB_REPOSITORY >NUL 2>NUL"
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $tag $assets --title $tag --notes "Automated MSYS2/UCRT64 build." --repo $env:GITHUB_REPOSITORY
+          }

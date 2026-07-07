@@ -41,6 +41,9 @@ def find_tool(name: str) -> str:
     found = shutil.which(name)
     if found:
         return found
+    python_scripts = Path(sys.executable).resolve().parent / "Scripts" / f"{name}.exe"
+    if python_scripts.exists():
+        return str(python_scripts)
     raise RuntimeError(f"{name} is not on PATH")
 
 
