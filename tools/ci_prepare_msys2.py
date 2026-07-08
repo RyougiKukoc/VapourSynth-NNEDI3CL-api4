@@ -71,6 +71,17 @@ def write_pkg_config(vs_root: Path) -> None:
     )
 
 
+def write_pkg_config_shim(deps: Path) -> Path:
+    shim = deps / f"vapoursynth-wheel-R{VAPOURSYNTH_VERSION}" / "pkg-config.cmd"
+    helper = ROOT / "tools" / "pkg_config_shim.py"
+    shim.write_text(
+        "@echo off\r\n"
+        f"\"{sys.executable}\" \"{helper}\" %*\r\n",
+        encoding="ascii",
+    )
+    return shim
+
+
 def prepare_vapoursynth(deps: Path) -> Path:
     out = deps / f"vapoursynth-wheel-R{VAPOURSYNTH_VERSION}"
     marker = out / "vapoursynth" / "include" / "VapourSynth4.h"
@@ -101,9 +112,11 @@ def main(argv: list[str]) -> int:
     deps = Path(args.deps_dir).resolve()
     deps.mkdir(parents=True, exist_ok=True)
     vs = prepare_vapoursynth(deps)
+    shim = write_pkg_config_shim(deps)
     print("Prepared dependencies:")
     print(f"VAPOURSYNTH_WHEEL_ROOT={vs}")
     print(f"PKG_CONFIG_PATH={vs / 'vapoursynth' / 'lib' / 'pkgconfig'}")
+    print(f"PKG_CONFIG={shim}")
     return 0
 
 

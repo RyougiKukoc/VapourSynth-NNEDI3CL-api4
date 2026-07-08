@@ -34,29 +34,79 @@ def _prepend_path_entries(env: dict[str, str], entries: list[Path]) -> None:
         env["PATH"] = os.pathsep.join(parts)
 
 
+def _candidate_msys2_prefixes(env: dict[str, str]) -> list[Path]:
+    prefixes: list[Path] = []
+    msystem_prefix = env.get("MSYSTEM_PREFIX")
+    if msystem_prefix:
+        prefixes.append(Path(msystem_prefix))
+    prefixes.extend(
+        [
+            Path(r"C:\msys64\ucrt64"),
+            Path(r"C:\msys64\mingw64"),
+        ]
+    )
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for prefix in prefixes:
+        key = str(prefix).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(prefix)
+    return unique
+
+
 def _configure_windows_build_env(env: dict[str, str]) -> dict[str, str]:
     if sys.platform != "win32":
         return env
 
-    msystem_prefix = env.get("MSYSTEM_PREFIX")
+    vs_wheel_dir = ROOT / "_deps" / "vapoursynth-wheel-R77"
     path_entries: list[Path] = []
     python_scripts = Path(sys.executable).resolve().parent / "Scripts"
     if python_scripts.exists():
         path_entries.append(python_scripts)
+    if vs_wheel_dir.exists():
+        path_entries.append(vs_wheel_dir)
 
-    if msystem_prefix:
-        prefix_path = Path(msystem_prefix)
+    msys2_prefixes = _candidate_msys2_prefixes(env)
+    for prefix_path in msys2_prefixes:
         path_entries.append(prefix_path / "bin")
         path_entries.append(prefix_path.parent / "usr" / "bin")
-    else:
-        path_entries.extend(
-            [
-                Path(r"C:\msys64\ucrt64\bin"),
-                Path(r"C:\msys64\usr\bin"),
-            ]
-        )
 
     _prepend_path_entries(env, path_entries)
+
+    if "PKG_CONFIG" not in env:
+        pkg_config_shim = vs_wheel_dir / "pkg-config.cmd"
+        if pkg_config_shim.exists():
+            env["PKG_CONFIG"] = str(pkg_config_shim)
+        else:
+            for prefix_path in msys2_prefixes:
+                for candidate in (
+                    prefix_path.parent / "usr" / "bin" / "pkg-config.exe",
+                    prefix_path.parent / "usr" / "bin" / "pkgconf.exe",
+                    prefix_path / "bin" / "pkg-config.exe",
+                    prefix_path / "bin" / "pkgconf.exe",
+                ):
+                    if candidate.exists():
+                        env["PKG_CONFIG"] = str(candidate)
+                        break
+                if "PKG_CONFIG" in env:
+                    break
+    if "PKG_CONFIG_PATH" not in env:
+        pkg_config_path = vs_wheel_dir / "vapoursynth" / "lib" / "pkgconfig"
+        if pkg_config_path.exists():
+            env["PKG_CONFIG_PATH"] = str(pkg_config_path)
+
+    if "CC" not in env or "CXX" not in env:
+        for prefix_path in msys2_prefixes:
+            gcc = prefix_path / "bin" / "gcc.exe"
+            gxx = prefix_path / "bin" / "g++.exe"
+            if gcc.exists() and "CC" not in env:
+                env["CC"] = str(gcc)
+            if gxx.exists() and "CXX" not in env:
+                env["CXX"] = str(gxx)
+            if "CC" in env and "CXX" in env:
+                break
 
     path_value = env.get("PATH")
     if "CC" not in env and shutil.which("gcc", path=path_value):
@@ -194,6 +244,7 @@ class CustomHook(BuildHookInterface[Any]):
 
         env = _configure_windows_build_env(os.environ.copy())
         _run([sys.executable, "tools/ci_prepare_msys2.py"], env=env)
+        env = _configure_windows_build_env(env)
         _run(
             [
                 sys.executable,

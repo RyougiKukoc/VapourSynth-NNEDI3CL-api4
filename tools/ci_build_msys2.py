@@ -47,6 +47,39 @@ def find_tool(name: str) -> str:
     raise RuntimeError(f"{name} is not on PATH")
 
 
+def prepend_path_entries(env: dict[str, str], entries: list[Path]) -> None:
+    parts = [str(entry) for entry in entries if entry.exists()]
+    if not parts:
+        return
+    existing = env.get("PATH")
+    if existing:
+        env["PATH"] = os.pathsep.join(parts + [existing])
+    else:
+        env["PATH"] = os.pathsep.join(parts)
+
+
+def candidate_msys2_prefixes(env: dict[str, str]) -> list[Path]:
+    prefixes: list[Path] = []
+    msystem_prefix = env.get("MSYSTEM_PREFIX")
+    if msystem_prefix:
+        prefixes.append(Path(msystem_prefix))
+    prefixes.extend(
+        [
+            Path(r"C:\msys64\ucrt64"),
+            Path(r"C:\msys64\mingw64"),
+        ]
+    )
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for prefix in prefixes:
+        key = str(prefix).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(prefix)
+    return unique
+
+
 def path_for_meson(path: Path) -> str:
     return path.resolve().as_posix()
 
@@ -143,11 +176,46 @@ def main(argv: list[str]) -> int:
         shutil.rmtree(dist_dir)
 
     env = os.environ.copy()
+    msys2_prefixes = candidate_msys2_prefixes(env)
+    prepend_path_entries(
+        env,
+        [
+            *(prefix / "bin" for prefix in msys2_prefixes),
+            *(prefix.parent / "usr" / "bin" for prefix in msys2_prefixes),
+        ],
+    )
     pc_paths = [
         str((vs_pkg / "lib" / "pkgconfig").resolve()),
         str((vs_pkg / "pkgconfig").resolve()),
     ]
     env["PKG_CONFIG_PATH"] = os.pathsep.join(pc_paths + [env.get("PKG_CONFIG_PATH", "")])
+    if "PKG_CONFIG" not in env:
+        pkg_config_shim = vs_root / "pkg-config.cmd"
+        if pkg_config_shim.exists():
+            env["PKG_CONFIG"] = str(pkg_config_shim)
+        else:
+            for prefix in msys2_prefixes:
+                for candidate in (
+                    prefix.parent / "usr" / "bin" / "pkg-config.exe",
+                    prefix.parent / "usr" / "bin" / "pkgconf.exe",
+                    prefix / "bin" / "pkg-config.exe",
+                    prefix / "bin" / "pkgconf.exe",
+                ):
+                    if candidate.exists():
+                        env["PKG_CONFIG"] = str(candidate)
+                        break
+                if "PKG_CONFIG" in env:
+                    break
+    if "CC" not in env or "CXX" not in env:
+        for prefix in msys2_prefixes:
+            gcc = prefix / "bin" / "gcc.exe"
+            gxx = prefix / "bin" / "g++.exe"
+            if gcc.exists() and "CC" not in env:
+                env["CC"] = str(gcc)
+            if gxx.exists() and "CXX" not in env:
+                env["CXX"] = str(gxx)
+            if "CC" in env and "CXX" in env:
+                break
 
     setup_cmd = [
         meson,
