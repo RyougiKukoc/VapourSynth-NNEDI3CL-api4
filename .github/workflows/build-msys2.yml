@@ -157,7 +157,7 @@ jobs:
               export PKG_CONFIG_PATH="/work/_deps/vapoursynth-wheel/extracted/vapoursynth/pkgconfig:${PKG_CONFIG_PATH:-}"
               export NNEDI3CL_FORCE_BUILD=1
               export NNEDI3CL_PLATFORM_TAG=manylinux_2_27_x86_64
-              "$py" -m build --wheel --no-isolation --outdir dist/wheels-linux
+              "$py" -m build --wheel --no-isolation --skip-dependency-check --outdir dist/wheels-linux
               wheel=$(find dist/wheels-linux -name "*.whl" -print -quit)
               test -n "$wheel"
               unzip -q "$wheel" "vapoursynth/plugins/nnedi3cl/*" -d dist/linux-x86_64/extracted
