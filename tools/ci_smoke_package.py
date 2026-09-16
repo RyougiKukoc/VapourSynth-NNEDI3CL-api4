@@ -92,6 +92,48 @@ def resolve_artifact_dir(artifact_dir_arg: str | None, artifact_zip_arg: str | N
     return (ROOT / (artifact_dir_arg or f"dist/msys2-ucrt64/{PLUGIN_NAME}")).resolve(), None
 
 
+class IsolatedEnvironmentPolicy:
+    """Create a single VapourSynth core with autoload disabled."""
+
+    def __init__(self, flags: int) -> None:
+        self._api: Any = None
+        self._environment: Any = None
+        self._flags = flags
+
+    def on_policy_registered(self, api: Any) -> None:
+        self._api = api
+        self._environment = api.create_environment(self._flags)
+
+    def on_policy_cleared(self) -> None:
+        self._api = None
+        self._environment = None
+
+    def get_current_environment(self) -> Any:
+        return self._environment
+
+    def set_environment(self, environment: Any) -> Any:
+        previous = self._environment
+        if environment is not None:
+            self._environment = environment
+        return previous
+
+    def is_alive(self, environment: Any) -> bool:
+        return environment is self._environment
+
+    def close(self) -> None:
+        if self._api is not None and self._environment is not None:
+            self._api.destroy_environment(self._environment)
+            self._environment = None
+
+
+def install_isolated_policy(vs: Any) -> IsolatedEnvironmentPolicy | None:
+    if not hasattr(vs, "register_policy") or vs.has_policy():
+        return None
+    policy = IsolatedEnvironmentPolicy(int(vs.DISABLE_AUTO_LOADING))
+    vs.register_policy(policy)
+    return policy
+
+
 def exercise_filter(core: Any, namespace: Any, vs: Any, *, require_opencl: bool, expect_device: str | None) -> dict[str, Any]:
     # The built-in Text filter used by NNEDI3CL's info mode needs at least 40x48.
     clip = core.std.BlankClip(format=vs.YUV420P8, width=128, height=96, length=12, color=[96, 128, 128])
@@ -161,16 +203,14 @@ def main(argv: list[str]) -> int:
             raise FileNotFoundError(f"missing required package file: {path}")
 
     handles = []
+    policy = None
     if sys.platform == "win32":
         handles.append(os.add_dll_directory(str(artifact_dir)))
     try:
         import vapoursynth as vs  # pylint: disable=import-outside-toplevel
 
-        try:
-            environment = vs.create_environment(flags=vs.DISABLE_AUTO_LOADING)
-            core = environment.get_core()
-        except AttributeError:
-            core = vs.core
+        policy = install_isolated_policy(vs)
+        core = vs.core
         core.std.LoadPlugin(str(plugin))
         namespace = getattr(core, PLUGIN_NAME, None)
         if namespace is None or not hasattr(namespace, "NNEDI3CL"):
@@ -195,6 +235,8 @@ def main(argv: list[str]) -> int:
     finally:
         for handle in handles:
             handle.close()
+        if policy is not None:
+            policy.close()
         if temporary is not None:
             shutil.rmtree(temporary, ignore_errors=True)
 
