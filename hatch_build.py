@@ -299,7 +299,11 @@ class CustomHook(BuildHookInterface[Any]):
 
         meson = _meson_command()
         build_dir = self.build_root / "native"
-        _run(meson + ["setup", str(build_dir), "--wipe", "--buildtype", "release"], env=env)
+        setup_command = meson + ["setup", str(build_dir), "--wipe", "--buildtype", "release"]
+        boost_root = env.get("NNEDI3CL_BOOST_ROOT")
+        if boost_root:
+            setup_command.append(f"-Dboost_root={boost_root}")
+        _run(setup_command, env=env)
         _run(meson + ["compile", "-C", str(build_dir)], env=env)
         shutil.copy2(_find_built_plugin(build_dir), self.dist_dir / _plugin_filename())
         shutil.copy2(ROOT / "NNEDI3CL" / "nnedi3_weights.bin", self.dist_dir / "nnedi3_weights.bin")
