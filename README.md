@@ -4,39 +4,40 @@ NNEDI3 is an intra-field only deinterlacer. It throws away one field, then
 interpolates the missing pixels from the kept field. It also works well for
 enlarging images by powers of two.
 
-This repository is the API4 port plus the Windows-first packaging/release flow
-for `NNEDI3CL`.
+This repository is the API4 port plus a Release-backed Windows and Linux
+packaging flow for `NNEDI3CL`.
 
 ## Installation
 
-Recommended on Windows x86_64:
+Recommended on Windows or Linux x86_64:
 
 ```powershell
 pip install "vapoursynth-nnedi3cl @ git+https://github.com/RyougiKukoc/VapourSynth-NNEDI3CL-api4.git"
 ```
 
 That install path builds a wheel from the repository metadata, but the build
-hook first tries to reuse the matching GitHub Release asset:
+hook first tries to reuse the matching GitHub Release asset. Version `8.1`
+maps to release tag `v8.1`:
 
 ```text
-nnedi3cl-msys2-ucrt64.zip
-```
-
-for version `8.0`, currently from release tag:
-
-```text
-v8.0-api4-msys2
+Windows: nnedi3cl-msys2-ucrt64.zip
+Linux x86_64: nnedi3cl-linux-x86_64.zip
 ```
 
 If the prebuilt asset is available, `pip` repackages that tested plugin payload
-into the wheel. If it is unavailable, the build hook falls back to a local
-MSYS2/UCRT64 build.
+into the wheel. If it is unavailable, the build hook falls back to the native
+build for the current platform: MSYS2/UCRT64 on Windows and Meson on Linux or
+macOS. Linux and macOS source builds require an API4-compatible VapourSynth
+SDK, Boost headers, OpenCL headers, and an OpenCL loader. The hook discovers
+the R79 wheel's `vapoursynth/pkgconfig` metadata while preserving a caller's
+existing `PKG_CONFIG_PATH`.
 
 Direct wheel install is also supported. Download the wheel from the repository
 Releases page and install it with:
 
 ```powershell
-pip install vapoursynth_nnedi3cl-8.0-py3-none-win_amd64.whl
+pip install vapoursynth_nnedi3cl-8.1-py3-none-win_amd64.whl
+pip install vapoursynth_nnedi3cl-8.1-py3-none-manylinux_2_27_x86_64.whl
 ```
 
 The wheel installs the plugin package under:
@@ -63,6 +64,13 @@ pip install --no-build-isolation "vapoursynth-nnedi3cl @ git+https://github.com/
 
 forces a specific local or remote prebuilt zip.
 
+On Linux, the same controls use normal shell syntax:
+
+```bash
+NNEDI3CL_FORCE_BUILD=1 pip install "vapoursynth-nnedi3cl @ git+https://github.com/RyougiKukoc/VapourSynth-NNEDI3CL-api4.git"
+NNEDI3CL_PREBUILT_URL=/path/to/nnedi3cl-linux-x86_64.zip pip install "vapoursynth-nnedi3cl @ git+https://github.com/RyougiKukoc/VapourSynth-NNEDI3CL-api4.git"
+```
+
 ## Usage
 
 This package does not expose a separate helper module. After installation, use
@@ -76,8 +84,10 @@ clip = core.std.BlankClip(width=640, height=360, format=vs.YUV420P8)
 out = core.nnedi3cl.NNEDI3CL(clip, field=1, dh=True)
 ```
 
-The required `nnedi3_weights.bin` file is installed beside `nnedi3cl.dll`
-automatically.
+The required `nnedi3_weights.bin` file is installed beside the platform-native
+plugin automatically. Filtering requires a functioning OpenCL ICD and device;
+the packaged Linux payload intentionally uses the host OpenCL loader and driver
+rather than bundling a GPU vendor runtime.
 
 Function signature:
 
@@ -106,10 +116,10 @@ nnedi3cl.NNEDI3CL(clip, int field[, bint dh=False, bint dw=False, int[] planes=[
 
 ## Build And Release
 
-The primary Windows workflow is `.github/workflows/build-msys2.yml`. It builds
-with MSYS2/UCRT64, smoke-loads the packaged plugin, builds a wheel, smoke-tests
-the installed wheel, and publishes both the tested package zip and the wheel as
-Release assets.
+The primary workflow is `.github/workflows/build-msys2.yml`. It builds the
+Windows UCRT64 and Linux x86_64 payloads, smoke-loads explicit package paths,
+builds and installs their wheels, and publishes all assets from one tag-only
+job after both platforms pass.
 
 The packaged plugin layout is:
 
@@ -142,6 +152,9 @@ The MSYS2 workflow does this:
 8. Smoke-test source install from repository metadata while forcing the local release zip as the prebuilt asset.
 
 Push a `v*` tag or publish a GitHub Release to upload the assets automatically.
+Linux wheels are built in manylinux2014 with a `manylinux_2_27_x86_64` wheel
+tag. The plugin itself is checked for GLIBC symbols no newer than 2.17, while
+the R79 VapourSynth runtime sets the end-to-end 2.27 floor.
 
 ### Local MSYS2 Build
 
@@ -226,3 +239,8 @@ Required dependencies:
 - VapourSynth API4 development headers and library/pkg-config metadata.
 - Boost headers, plus Boost filesystem/system only if `-Doffline_cache=true`.
 - OpenCL headers and loader library.
+
+Linux additionally needs a vendor OpenCL ICD at runtime. The release payload
+contains `nnedi3cl.so`, `manifest.vs`, and `nnedi3_weights.bin`; it does not
+bundle the loader or vendor driver. macOS currently has no Release asset, so a
+VCS install follows the native Meson fallback path.

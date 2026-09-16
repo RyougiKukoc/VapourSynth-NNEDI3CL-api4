@@ -6,42 +6,45 @@ import zipfile
 from pathlib import Path
 
 
+PLUGIN_NAME = "nnedi3cl"
+
+
+def plugin_filename() -> str:
+    if sys.platform == "win32":
+        return f"{PLUGIN_NAME}.dll"
+    if sys.platform == "darwin":
+        return f"{PLUGIN_NAME}.dylib"
+    return f"{PLUGIN_NAME}.so"
+
+
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Create a release zip for a packaged VapourSynth plugin directory.")
+    parser = argparse.ArgumentParser(description="Create a release zip for a packaged NNEDI3CL plugin directory.")
     parser.add_argument("--input-dir", required=True, help="Directory containing the top-level nnedi3cl package directory.")
     parser.add_argument("--output", required=True, help="Output zip path.")
     args = parser.parse_args(argv)
 
     input_dir = Path(args.input_dir).resolve()
     output = Path(args.output).resolve()
-    package_dir = input_dir / "nnedi3cl"
+    package_dir = input_dir / PLUGIN_NAME
     if not package_dir.is_dir():
-        print(f"missing package directory: {package_dir}", file=sys.stderr)
-        return 1
-    for required in [
-        package_dir / "manifest.vs",
-        package_dir / "nnedi3cl.dll",
-        package_dir / "nnedi3_weights.bin",
-        package_dir / "OpenCL.dll",
-    ]:
-        if not required.exists():
-            print(f"missing required package file: {required}", file=sys.stderr)
-            return 1
+        raise FileNotFoundError(f"missing package directory: {package_dir}")
+    required = [package_dir / "manifest.vs", package_dir / plugin_filename(), package_dir / "nnedi3_weights.bin"]
+    if sys.platform == "win32":
+        required.append(package_dir / "OpenCL.dll")
+    for path in required:
+        if not path.is_file():
+            raise FileNotFoundError(f"missing required package file: {path}")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    if output.exists():
-        output.unlink()
-
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(package_dir.rglob("*")):
             if path.is_file():
-                zf.write(path, path.relative_to(input_dir).as_posix())
+                archive.write(path, path.relative_to(input_dir).as_posix())
 
-    with zipfile.ZipFile(output) as zf:
-        names = zf.namelist()
     print(f"release_asset={output}")
-    for name in names:
-        print(name)
+    with zipfile.ZipFile(output) as archive:
+        for name in archive.namelist():
+            print(name)
     return 0
 
 

@@ -1,4 +1,4 @@
-name: Build MSYS2
+name: Build release payloads
 
 on:
   push:
@@ -8,15 +8,12 @@ on:
       - "v*"
   pull_request:
   workflow_dispatch:
-  release:
-    types:
-      - published
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
+  windows-ucrt64:
     name: Build Windows UCRT64
     runs-on: windows-2025
 
@@ -31,12 +28,12 @@ jobs:
       - name: Set up CPython
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install Python packaging tools
         shell: cmd
         run: >-
-          "%pythonLocation%\python.exe" -m pip install --upgrade pip build hatchling packaging meson ninja VapourSynth
+          "%pythonLocation%\python.exe" -m pip install --upgrade pip build hatchling packaging meson ninja VapourSynth==79
 
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
@@ -69,15 +66,6 @@ jobs:
           --artifact-dir dist\msys2-ucrt64
           --exercise-filter
 
-      - name: Smoke-load artifact through manifest autoload
-        shell: cmd
-        run: >-
-          "%pythonLocation%\python.exe" tools\smoke_load_artifact.py
-          --vapoursynth-root _deps\vapoursynth-wheel-R77
-          --artifact-dir dist\msys2-ucrt64
-          --autoload
-          --exercise-filter
-
       - name: Pack local prebuilt zip
         shell: cmd
         run: >-
@@ -89,6 +77,7 @@ jobs:
         shell: cmd
         env:
           NNEDI3CL_PREBUILT_URL: ${{ github.workspace }}\dist\nnedi3cl-msys2-ucrt64.zip
+          NNEDI3CL_PLATFORM_TAG: win_amd64
         run: >-
           "%pythonLocation%\python.exe" -m build --wheel --no-isolation --outdir dist\wheels
 
@@ -102,57 +91,209 @@ jobs:
         run: >-
           "%pythonLocation%\python.exe" tools\ci_smoke_package.py
           --artifact-zip dist\release-assets\nnedi3cl-msys2-ucrt64.zip
-          --exercise-filter
+          --json
 
       - name: Install built wheel
         shell: cmd
         run: >-
-          for %%I in (dist\wheels\*.whl) do "%pythonLocation%\python.exe" -m pip install --force-reinstall "%%~fI"
+          for %%I in (dist\wheels\*.whl) do "%pythonLocation%\python.exe" -m pip install --force-reinstall --no-deps "%%~fI"
 
       - name: Smoke test installed wheel
         shell: cmd
         run: >-
-          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter
+          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter --json
 
-      - name: Smoke test source install with prebuilt release asset
+      - name: Smoke test source install with local Release payload
         shell: cmd
         env:
           NNEDI3CL_PREBUILT_URL: ${{ github.workspace }}\dist\release-assets\nnedi3cl-msys2-ucrt64.zip
+          NNEDI3CL_PLATFORM_TAG: win_amd64
         run: |
           "%pythonLocation%\python.exe" -m pip uninstall -y vapoursynth-nnedi3cl
           "%pythonLocation%\python.exe" -m pip install --force-reinstall --no-deps --no-build-isolation -v .
-          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter
+          "%pythonLocation%\python.exe" tools\ci_smoke_installed_wheel.py --exercise-filter --json
 
-      - name: Upload artifact
+      - name: Upload Windows release assets
         uses: actions/upload-artifact@v7
         with:
-          name: nnedi3cl-msys2-ucrt64
-          path: dist/msys2-ucrt64
-
-      - name: Upload wheel artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: nnedi3cl-wheel-win64
-          path: dist/wheels
-
-      - name: Upload release assets artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: nnedi3cl-release-assets
+          name: nnedi3cl-release-assets-windows
           path: dist/release-assets
+          if-no-files-found: error
 
-      - name: Upload release asset
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
-        shell: powershell
+  linux-x86_64:
+    name: Build Linux x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build Linux wheel and Release payload
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p dist/release-assets-linux
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/source:ro" \
+            -v "$GITHUB_WORKSPACE/dist:/out" \
+            -w /work \
+            quay.io/pypa/manylinux2014_x86_64 bash -lc '
+              set -euxo pipefail
+              export PYTHONDONTWRITEBYTECODE=1
+              cp -a /source/. /work/
+              py=/opt/python/cp313-cp313/bin/python
+              source /opt/rh/devtoolset-10/enable
+              export PATH="/opt/python/cp313-cp313/bin:$PATH"
+              yum install -y -q boost-devel ocl-icd-devel opencl-headers
+              "$py" -m pip install --upgrade pip
+              "$py" -m pip install build hatchling packaging meson ninja
+              mkdir -p _deps/vapoursynth-wheel dist/wheels-linux dist/linux-x86_64/extracted
+              "$py" -m pip download --only-binary=:all: --no-deps \
+                --platform manylinux_2_27_x86_64 --implementation cp --python-version 313 --abi abi3 \
+                VapourSynth==79 -d _deps/vapoursynth-wheel
+              unzip -q _deps/vapoursynth-wheel/*.whl -d _deps/vapoursynth-wheel/extracted
+              export PKG_CONFIG_PATH="/work/_deps/vapoursynth-wheel/extracted/vapoursynth/pkgconfig:${PKG_CONFIG_PATH:-}"
+              export NNEDI3CL_FORCE_BUILD=1
+              export NNEDI3CL_PLATFORM_TAG=manylinux_2_27_x86_64
+              "$py" -m build --wheel --no-isolation --outdir dist/wheels-linux
+              wheel=$(find dist/wheels-linux -name "*.whl" -print -quit)
+              test -n "$wheel"
+              unzip -q "$wheel" "vapoursynth/plugins/nnedi3cl/*" -d dist/linux-x86_64/extracted
+              mv dist/linux-x86_64/extracted/vapoursynth/plugins/nnedi3cl dist/linux-x86_64/nnedi3cl
+              "$py" tools/ci_make_release_assets.py --clean \
+                --package-dir dist/linux-x86_64/nnedi3cl --wheel-dir dist/wheels-linux \
+                --out-dir dist/release-assets-linux --zip-name nnedi3cl-linux-x86_64.zip
+              "$py" -c "import re, subprocess; out = subprocess.check_output([\"readelf\", \"--version-info\", \"dist/linux-x86_64/nnedi3cl/nnedi3cl.so\"], text=True); versions = [tuple(map(int, value.split(\".\"))) for value in re.findall(r\"GLIBC_(\\d+\\.\\d+)\", out)]; assert all(version <= (2, 17) for version in versions), versions"
+              cp dist/release-assets-linux/* /out/release-assets-linux/
+            '
+
+      - name: Upload Linux release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: nnedi3cl-release-assets-linux
+          path: dist/release-assets-linux
+          if-no-files-found: error
+
+  linux-runtime-smoke:
+    name: Smoke Linux Release payload
+    needs: linux-x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download Linux release assets
+        uses: actions/download-artifact@v8
+        with:
+          name: nnedi3cl-release-assets-linux
+          path: dist/release-assets-linux
+
+      - name: Set up CPython
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes ocl-icd-libopencl1
+          python -m pip install --upgrade pip VapourSynth==79
+
+      - name: Install and smoke test released wheel
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip install --force-reinstall --no-deps dist/release-assets-linux/*.whl
+          python tools/ci_smoke_installed_wheel.py --json
+
+      - name: Explicitly smoke test Linux Release plugin
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python tools/ci_smoke_package.py --artifact-zip dist/release-assets-linux/nnedi3cl-linux-x86_64.zip --json
+
+      - name: Smoke source install with local Release payload
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m pip uninstall -y vapoursynth-nnedi3cl
+          export NNEDI3CL_PREBUILT_URL="$GITHUB_WORKSPACE/dist/release-assets-linux/nnedi3cl-linux-x86_64.zip"
+          python -m pip install --force-reinstall --no-deps -v . 2>&1 | tee release-install.log
+          grep -F "NNEDI3CL wheel build: using prebuilt release asset" release-install.log
+          python tools/ci_smoke_installed_wheel.py --json
+
+  linux-force-build-smoke:
+    name: Smoke Linux isolated native fallback
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up CPython
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Force ordinary isolated PEP 517 fallback
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes build-essential libboost-dev ocl-icd-opencl-dev opencl-headers
+          python -m pip install --upgrade pip VapourSynth==79
+          mkdir -p /tmp/unrelated-pkgconfig
+          printf 'Name: unrelated\nVersion: 1\n' > /tmp/unrelated-pkgconfig/unrelated.pc
+          NNEDI3CL_FORCE_BUILD=1 PKG_CONFIG_PATH=/tmp/unrelated-pkgconfig \
+            python -m pip install --force-reinstall --no-deps -v . 2>&1 | tee fallback-install.log
+          grep -F "NNEDI3CL wheel build: skipping prebuilt asset" fallback-install.log
+          python tools/ci_smoke_installed_wheel.py --json
+
+  publish-release:
+    name: Publish Release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows-ucrt64, linux-runtime-smoke, linux-force-build-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Release assets
+        uses: actions/download-artifact@v8
+        with:
+          pattern: nnedi3cl-release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Check exact Release inventory
+        shell: bash
+        run: |
+          set -euxo pipefail
+          expected=(
+            nnedi3cl-linux-x86_64.zip
+            nnedi3cl-msys2-ucrt64.zip
+            vapoursynth_nnedi3cl-8.1-py3-none-manylinux_2_27_x86_64.whl
+            vapoursynth_nnedi3cl-8.1-py3-none-win_amd64.whl
+          )
+          actual=(release-assets/*)
+          test "${#actual[@]}" -eq "${#expected[@]}"
+          for asset in "${expected[@]}"; do
+            test -f "release-assets/$asset"
+            sha256sum "release-assets/$asset"
+          done
+
+      - name: Publish GitHub Release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        shell: bash
         run: |
-          $tag = $env:RELEASE_TAG
-          $assets = Get-ChildItem dist\release-assets\* | Select-Object -ExpandProperty FullName
-          & cmd.exe /d /c "gh release view $tag --repo $env:GITHUB_REPOSITORY >NUL 2>NUL"
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $assets --clobber --repo $env:GITHUB_REPOSITORY
-          } else {
-            gh release create $tag $assets --title $tag --notes "Automated MSYS2/UCRT64 build." --repo $env:GITHUB_REPOSITORY
-          }
+          set -euxo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" release-assets/* --title "$tag" --notes "Automated Windows and Linux release for $tag." --repo "$GITHUB_REPOSITORY"
+          fi

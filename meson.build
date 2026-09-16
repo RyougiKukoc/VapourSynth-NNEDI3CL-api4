@@ -1,7 +1,7 @@
 project('NNEDI3CL', 'cpp',
   default_options : ['buildtype=release', 'b_ndebug=if-release', 'cpp_std=c++14'],
   meson_version : '>=0.48.0',
-  version : '8'
+  version : '8.1'
 )
 
 cpp = meson.get_compiler('cpp')
@@ -36,7 +36,13 @@ else
   if get_option('offline_cache')
     boost_dep = dependency('boost', modules : ['filesystem', 'system'])
   else
-    boost_dep = dependency('boost')
+    boost_dep = dependency('boost', required : false)
+    if not boost_dep.found()
+      if not cpp.has_header('boost/compute/core.hpp')
+        error('Boost.Compute headers were not found; set boost_root or install Boost development headers.')
+      endif
+      boost_dep = declare_dependency()
+    endif
   endif
 endif
 
