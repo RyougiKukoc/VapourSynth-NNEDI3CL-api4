@@ -142,6 +142,8 @@ jobs:
               export PYTHONDONTWRITEBYTECODE=1
               cp -a /source/. /work/
               py=/opt/python/cp313-cp313/bin/python
+              export MANPATH="${MANPATH:-}"
+              export INFOPATH="${INFOPATH:-}"
               source /opt/rh/devtoolset-10/enable
               export PATH="/opt/python/cp313-cp313/bin:$PATH"
               yum install -y -q boost-devel ocl-icd-devel opencl-headers
